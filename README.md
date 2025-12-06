@@ -1,6 +1,6 @@
 # UndetectedBrowser
 
-A stealth browser automation tool with advanced profile management and fingerprint spoofing capabilities. Built with Python and PyQt5, UndetectedBrowser provides a user-friendly GUI for managing multiple browser profiles with persistent sessions and undetectable browser fingerprints.
+A stealth browser automation tool with advanced profile management and fingerprint spoofing capabilities. Built with Python and CustomTkinter/Tkinter, UndetectedBrowser provides a user-friendly GUI for managing multiple browser profiles with persistent sessions and undetectable browser fingerprints.
 
 ## Features
 
@@ -184,8 +184,8 @@ This tool is intended for legitimate browser automation tasks, testing, and priv
 ## Acknowledgments
 
 - Built with [undetected-chromedriver](https://github.com/ultrafunkamsterdam/undetected-chromedriver)
-- Modern PyQt5 user interface
-- PyQt5 for the graphical interface
+- Modern CustomTkinter user interface
+- CustomTkinter/Tkinter for the graphical interface
 
 ## Roadmap
 
