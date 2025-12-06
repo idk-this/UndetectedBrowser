@@ -13,6 +13,7 @@ except ImportError:
 
 from src.utils.fingerprint_generator import BrowserFingerprint
 from src.utils.proxy_manager import ProxyConfig
+from src.utils.cache_cleaner import CacheCleaner
 from src.config import DEFAULT_BROWSER_ARGS
 
 
@@ -143,3 +144,17 @@ class ChromeDriverEngine:
             driver.quit()
         except Exception:
             pass
+        
+        # Clean cache after browser closes to reduce profile size
+        try:
+            print(f"Cleaning cache for profile: {profile_name}")
+            bytes_freed = CacheCleaner.clean_profile_cache(
+                profile_dir,
+                keep_cookies=True,  # Keep cookies by default
+                keep_history=False  # Clean history to save space
+            )
+            if bytes_freed > 0:
+                mb_freed = bytes_freed / (1024 * 1024)
+                print(f"Cache cleaned: {mb_freed:.2f} MB freed")
+        except Exception as e:
+            print(f"Error cleaning cache: {e}")

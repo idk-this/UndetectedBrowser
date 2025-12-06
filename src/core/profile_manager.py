@@ -11,6 +11,7 @@ from dataclasses import dataclass, asdict
 from src.config import PROFILES_DIR, METADATA_FILE
 from src.utils.fingerprint_generator import BrowserFingerprint, FingerprintGenerator
 from src.utils.proxy_manager import ProxyConfig
+from src.utils.cache_cleaner import CacheCleaner
 
 
 @dataclass
@@ -325,3 +326,45 @@ class ProfileManager:
             pass
 
         return total
+    
+    def clean_profile_cache(self, name: str, keep_cookies: bool = True, keep_history: bool = False) -> int:
+        """Clean cache from profile directory
+        
+        Args:
+            name: Profile name
+            keep_cookies: If True, preserves cookies (default: True)
+            keep_history: If True, preserves history (default: False)
+            
+        Returns:
+            Number of bytes freed
+        """
+        pdir = self.profile_dir(name)
+        if not pdir.exists():
+            return 0
+        
+        return CacheCleaner.clean_profile_cache(
+            pdir,
+            keep_cookies=keep_cookies,
+            keep_history=keep_history
+        )
+    
+    def get_cleanable_cache_size(self, name: str, keep_cookies: bool = True, keep_history: bool = False) -> int:
+        """Get size of cleanable cache without actually cleaning
+        
+        Args:
+            name: Profile name
+            keep_cookies: If True, excludes cookies from calculation
+            keep_history: If True, excludes history from calculation
+            
+        Returns:
+            Number of bytes that can be freed
+        """
+        pdir = self.profile_dir(name)
+        if not pdir.exists():
+            return 0
+        
+        return CacheCleaner.get_cleanable_size(
+            pdir,
+            keep_cookies=keep_cookies,
+            keep_history=keep_history
+        )
