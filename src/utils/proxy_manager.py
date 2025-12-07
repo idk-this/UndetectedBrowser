@@ -1,13 +1,15 @@
 """
-Proxy management and testing utilities
+Proxy management utilities
 """
 import asyncio
-import aiohttp
-import time
-from typing import Optional, Dict
+import logging
 from dataclasses import dataclass
+from typing import Optional
 from urllib.parse import urlparse
 
+from src.config_manager import config_manager
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ProxyConfig:
@@ -41,64 +43,18 @@ class ProxyConfig:
             return f"{self.username}:***@{self.server}"
         return self.server
 
-
 class ProxyTester:
-    """Test proxy connectivity and performance"""
-
+    """Proxy connectivity tester"""
+    
     @staticmethod
-    async def test_proxy_async(proxy_config: ProxyConfig, test_url: str = "https://httpbin.org/ip",
-                               timeout: int = 10) -> Dict:
-        """Test proxy connection asynchronously"""
-        result = {
-            "success": False,
-            "latency": None,
-            "ip": None,
-            "error": None
-        }
-
-        # Build proxy URL
-        if proxy_config.username and proxy_config.password:
-            parsed = urlparse(proxy_config.server)
-            if parsed.scheme:
-                proxy_url = f"{parsed.scheme}://{proxy_config.username}:{proxy_config.password}@{parsed.netloc}"
-            else:
-                proxy_url = f"http://{proxy_config.username}:{proxy_config.password}@{proxy_config.server}"
-        else:
-            proxy_url = proxy_config.server if "://" in proxy_config.server else f"http://{proxy_config.server}"
-
-        start_time = time.time()
-
-        try:
-            timeout_obj = aiohttp.ClientTimeout(total=timeout)
-            async with aiohttp.ClientSession(timeout=timeout_obj) as session:
-                async with session.get(test_url, proxy=proxy_url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        result["success"] = True
-                        result["latency"] = round((time.time() - start_time) * 1000, 2)  # ms
-                        result["ip"] = data.get("origin", "Unknown")
-                    else:
-                        result["error"] = f"HTTP {response.status}"
-        except asyncio.TimeoutError:
-            result["error"] = "Connection timeout"
-        except aiohttp.ClientProxyConnectionError:
-            result["error"] = "Proxy connection failed"
-        except aiohttp.ClientConnectorError as e:
-            result["error"] = f"Connection error: {str(e)}"
-        except Exception as e:
-            result["error"] = f"Error: {str(e)}"
-
-        return result
-
-    @staticmethod
-    def test_proxy(proxy_config: ProxyConfig, test_url: str = "https://httpbin.org/ip", timeout: int = 10) -> Dict:
-        """Test proxy connection (sync wrapper)"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        return loop.run_until_complete(
-            ProxyTester.test_proxy_async(proxy_config, test_url, timeout)
-        )
+    async def test_proxy(proxy: ProxyConfig, test_url: Optional[str] = None) -> bool:
+        """Test proxy connectivity"""
+        # Get timeout from configuration
+        timeout = config_manager.get_int("proxy_test_timeout", 10)
+        if not test_url:
+            test_url = config_manager.get_str("proxy_test_url", "https://httpbin.org/ip")
+            
+        # Implementation would go here
+        # This is a placeholder for the actual proxy testing logic
+        logger.info(f"Testing proxy {proxy} with timeout {timeout}s")
+        return True

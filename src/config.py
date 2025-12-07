@@ -1,19 +1,27 @@
-# config.py (дополненный)
+# config.py
 """
-Configuration module - Updated with UI colors
+Configuration module - Constants and static configuration
 """
+import logging
 from pathlib import Path
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Directories
 APP_DIR = Path.cwd()
 PROFILES_DIR = APP_DIR / "profiles"
-PROFILES_DIR.mkdir(exist_ok=True)
+try:
+    PROFILES_DIR.mkdir(exist_ok=True)
+except Exception as e:
+    logger.error(f"Failed to create profiles directory: {e}")
+    raise
 
 # Files
 METADATA_FILE = PROFILES_DIR / "profiles.json"
 
 # Browser settings
-BROWSER_ENGINE = 'chromedriver'
 DEFAULT_BROWSER_ARGS = [
     '--disable-blink-features=AutomationControlled',
     '--disable-dev-shm-usage',
@@ -80,7 +88,3 @@ FINGERPRINT_PRESETS = {
         'device_memory': 8,
     }
 }
-
-# Proxy timeout settings
-PROXY_TEST_TIMEOUT = 10  # seconds
-PROXY_TEST_URL = "https://httpbin.org/ip"

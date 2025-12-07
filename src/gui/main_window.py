@@ -11,11 +11,12 @@ import tkinter as tk
 from typing import Optional, Dict, List
 from datetime import datetime
 
-from src.core.profile_manager import ProfileManager
+from src.core.profile_manager import ProfileManager, ProfileError, ProfileAlreadyExistsError, ProfileNotFoundError
 from src.core.browser_launcher import BrowserLauncher
 from src.gui.create_profile_dialog import CreateProfileDialog
 from src.gui.edit_profile_dialog import EditProfileDialog
 from src.gui.process_monitor import ProcessMonitorWindow
+from src.gui.process_monitor_service import ProcessMonitorService
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -30,7 +31,7 @@ class ProfileManagerGUI(ctk.CTk):
         self.selected_profile = None
         self.profile_buttons = {}
         self.current_tab = "profiles"  # profiles, settings
-        self._process_monitors = set()
+        self.process_monitor_service = ProcessMonitorService()
         
         # Window setup
         self.title("Stealth Browser Manager")
@@ -45,6 +46,37 @@ class ProfileManagerGUI(ctk.CTk):
         
         self._create_widgets()
         self._refresh_profile_list()
+        
+    def _is_ui_valid(self):
+        """Check if the UI is still valid for updates"""
+        try:
+            return (self.winfo_exists() and 
+                   hasattr(self, 'profile_list_container') and 
+                   hasattr(self, 'right_container') and
+                   self.profile_list_container.winfo_exists() and
+                   self.right_container.winfo_exists())
+        except Exception:
+            return False
+            
+    def _safe_destroy_children(self, parent_widget):
+        """Safely destroy all children of a widget, handling pending events"""
+        try:
+            # Get all children first to avoid modification during iteration
+            children = list(parent_widget.winfo_children())
+            for widget in children:
+                try:
+                    # Unbind all events to prevent callbacks after destruction
+                    widget.unbind("<Button-1>")
+                    widget.unbind("<Button-3>")
+                    
+                    # Schedule destruction after all pending events are processed
+                    self.after_idle(widget.destroy)
+                except Exception:
+                    # Widget may have already been destroyed
+                    pass
+        except Exception:
+            # Parent widget may have been destroyed
+            pass
         
     def _create_widgets(self):
         """Create all UI widgets"""
@@ -321,15 +353,26 @@ class ProfileManagerGUI(ctk.CTk):
     
     def _refresh_profile_list(self):
         """Refresh the profile list with search filtering"""
-        # Clear current list
-        for widget in self.profile_list_container.winfo_children():
-            widget.destroy()
+        # Check if UI is still valid
+        if not self._is_ui_valid():
+            return
+            
+        # Clear current list with proper cleanup
+        self._safe_destroy_children(self.profile_list_container)
         
         # Get all profiles
-        profiles = self.profile_manager.list_profiles()
+        try:
+            profiles = self.profile_manager.list_profiles()
+        except Exception:
+            # Handle case where profile manager is not available
+            return
         
         # Apply search filter
-        search_term = self.search_var.get().strip().lower()
+        try:
+            search_term = self.search_var.get().strip().lower()
+        except Exception:
+            search_term = ""
+            
         filtered_profiles = []
         
         for name, profile in profiles.items():
@@ -348,151 +391,184 @@ class ProfileManagerGUI(ctk.CTk):
         
         # Create profile rows
         for name, profile in filtered_profiles:
-            self._create_profile_row(name, profile)
+            # Check if UI is still valid before creating widgets
+            if not self._is_ui_valid():
+                return
+            try:
+                self._create_profile_row(name, profile)
+            except Exception:
+                # Skip profile if we can't create its row
+                pass
     
     def select_profile(self, profile_name: str):
         """Select a profile"""
+        # Check if UI is still valid
+        if not self._is_ui_valid():
+            return
         self.selected_profile = profile_name
         self._show_right_details()
     
     def _show_right_details(self):
         """Show profile details in right panel"""
+        # Check if UI is still valid
+        if not self._is_ui_valid():
+            return
+            
         if not self.selected_profile or self.current_tab != "profiles":
-            self.right_container.grid_remove()
-            # Expand main content across columns 1-2 when no selection
-            self.main_container.grid_configure(columnspan=2)
+            try:
+                self.right_container.grid_remove()
+                # Expand main content across columns 1-2 when no selection
+                self.main_container.grid_configure(columnspan=2)
+            except Exception:
+                # Container may have been destroyed
+                pass
             return
         
-        # Clear right container
-        for widget in self.right_container.winfo_children():
-            widget.destroy()
+        # Clear right container with proper cleanup
+        try:
+            self._safe_destroy_children(self.right_container)
+        except Exception:
+            # Right container may have been destroyed
+            return
         
         # Show container
-        self.right_container.grid()
-        # Shrink main content to make space for right panel
-        self.main_container.grid_configure(columnspan=1)
-        
-        # Get profile data
-        profile = self.profile_manager.get_profile(self.selected_profile)
-        if not profile:
+        try:
+            self.right_container.grid()
+            # Shrink main content to make space for right panel
+            self.main_container.grid_configure(columnspan=1)
+        except Exception:
+            # Container may have been destroyed
             return
         
-        # Header with close button
-        header_frame = ctk.CTkFrame(self.right_container, fg_color="transparent")
-        header_frame.pack(fill="x", padx=10, pady=(10, 0))
-        ctk.CTkButton(
-            header_frame,
-            text="✖",
-            width=28,
-            height=28,
-            fg_color="transparent",
-            hover_color="#2a2d2e",
-            command=self._close_right_details
-        ).pack(side="right")
+        # Get profile data
+        try:
+            profile = self.profile_manager.get_profile(self.selected_profile)
+            if not profile:
+                return
+        except Exception:
+            # Profile manager may not be available
+            return
         
-        # Scrollable container for details
-        details_scroll = ctk.CTkScrollableFrame(self.right_container, fg_color="transparent")
-        details_scroll.pack(fill="both", expand=True, padx=15, pady=15)
-        
-        # Header title
-        ctk.CTkLabel(
-            header_frame,
-            text=profile.name,
-            font=ctk.CTkFont(size=18, weight="bold")
-        ).pack(side="left", padx=10)
-        
-        # Status
-        is_running = BrowserLauncher.is_running(self.selected_profile)
-        status_text = "🟢 Running" if is_running else "⚫ Stopped"
-        status_color = "green" if is_running else "gray"
-        
-        ctk.CTkLabel(
-            details_scroll,
-            text=status_text,
-            font=ctk.CTkFont(size=12),
-            text_color=status_color
-        ).pack(anchor="w", pady=(0, 20))
-        
-        # Info sections
-        self._create_detail_section(details_scroll, "BASIC INFO", [
-            ("Engine", getattr(profile, 'engine', 'chromedriver')),
-            ("Created", profile.created[:10] if profile.created else "Unknown"),
-            ("Size", f"{self.profile_manager.get_profile_size(self.selected_profile) / 1024:.1f} KB"),
-        ])
-        
-        if profile.fingerprint:
-            self._create_detail_section(details_scroll, "FINGERPRINT", [
-                ("Platform", profile.fingerprint.get('platform', 'N/A')),
-                ("Screen", f"{profile.fingerprint.get('screen_width', 'N/A')}×{profile.fingerprint.get('screen_height', 'N/A')}"),
-                ("Cores", str(profile.fingerprint.get('hardware_concurrency', 'N/A'))),
-                ("Memory", f"{profile.fingerprint.get('device_memory', 'N/A')} GB"),
-            ])
-        
-        if profile.proxy:
-            proxy_text = profile.proxy.get('server', 'N/A')
-            if profile.proxy.get('username'):
-                proxy_text = f"{profile.proxy['username']}@{proxy_text}"
+        try:
+            # Header with close button
+            header_frame = ctk.CTkFrame(self.right_container, fg_color="transparent")
+            header_frame.pack(fill="x", padx=10, pady=(10, 0))
+            ctk.CTkButton(
+                header_frame,
+                text="✖",
+                width=28,
+                height=28,
+                fg_color="transparent",
+                hover_color="#2a2d2e",
+                command=self._close_right_details
+            ).pack(side="right")
             
-            self._create_detail_section(details_scroll, "PROXY", [
-                ("Server", proxy_text),
+            # Scrollable container for details
+            details_scroll = ctk.CTkScrollableFrame(self.right_container, fg_color="transparent")
+            details_scroll.pack(fill="both", expand=True, padx=15, pady=15)
+            
+            # Header title
+            ctk.CTkLabel(
+                header_frame,
+                text=profile.name,
+                font=ctk.CTkFont(size=18, weight="bold")
+            ).pack(side="left", padx=10)
+            
+            # Status
+            is_running = BrowserLauncher.is_running(self.selected_profile)
+            status_text = "🟢 Running" if is_running else "⚫ Stopped"
+            status_color = "green" if is_running else "gray"
+            
+            ctk.CTkLabel(
+                details_scroll,
+                text=status_text,
+                font=ctk.CTkFont(size=12),
+                text_color=status_color
+            ).pack(anchor="w", pady=(0, 20))
+            
+            # Info sections
+            self._create_detail_section(details_scroll, "BASIC INFO", [
+                ("Engine", getattr(profile, 'engine', 'chromedriver')),
+                ("Created", profile.created[:10] if profile.created else "Unknown"),
+                ("Size", f"{self.profile_manager.get_profile_size(self.selected_profile) / 1024:.1f} KB"),
             ])
-        
-        # Notes section
-        notes_frame = ctk.CTkFrame(details_scroll, fg_color="#2a2d2e", corner_radius=6)
-        notes_frame.pack(fill="x", pady=(15, 0))
-        
-        ctk.CTkLabel(
-            notes_frame,
-            text="NOTES",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color="gray"
-        ).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        notes_text = ctk.CTkTextbox(notes_frame, height=100, fg_color="transparent", border_width=0)
-        notes_text.pack(fill="x", padx=10, pady=(0, 10))
-        
-        if profile.notes:
-            notes_text.insert("1.0", profile.notes)
-        # Enable inline editing and save on every change (supports Enter/newlines)
-        notes_text.configure(state="normal")
-        notes_text.bind("<KeyRelease>", lambda e: self._save_notes_live(e.widget))
-        
-        # Action buttons at bottom
-        actions_frame = ctk.CTkFrame(details_scroll, fg_color="transparent")
-        actions_frame.pack(fill="x", pady=(20, 10))
-        
-        if is_running:
-            stop_btn = ctk.CTkButton(
+            
+            if profile.fingerprint:
+                self._create_detail_section(details_scroll, "FINGERPRINT", [
+                    ("Platform", profile.fingerprint.get('platform', 'N/A')),
+                    ("Screen", f"{profile.fingerprint.get('screen_width', 'N/A')}×{profile.fingerprint.get('screen_height', 'N/A')}"),
+                    ("Cores", str(profile.fingerprint.get('hardware_concurrency', 'N/A'))),
+                    ("Memory", f"{profile.fingerprint.get('device_memory', 'N/A')} GB"),
+                ])
+            
+            if profile.proxy:
+                proxy_text = profile.proxy.get('server', 'N/A')
+                if profile.proxy.get('username'):
+                    proxy_text = f"{profile.proxy['username']}@{proxy_text}"
+                
+                self._create_detail_section(details_scroll, "PROXY", [
+                    ("Server", proxy_text),
+                ])
+            
+            # Notes section
+            notes_frame = ctk.CTkFrame(details_scroll, fg_color="#2a2d2e", corner_radius=6)
+            notes_frame.pack(fill="x", pady=(15, 0))
+            
+            ctk.CTkLabel(
+                notes_frame,
+                text="NOTES",
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color="gray"
+            ).pack(anchor="w", padx=10, pady=(10, 5))
+            
+            notes_text = ctk.CTkTextbox(notes_frame, height=100, fg_color="transparent", border_width=0)
+            notes_text.pack(fill="x", padx=10, pady=(0, 10))
+            
+            if profile.notes:
+                notes_text.insert("1.0", profile.notes)
+            # Enable inline editing and save on every change (supports Enter/newlines)
+            notes_text.configure(state="normal")
+            notes_text.bind("<KeyRelease>", lambda e: self._save_notes_live(e.widget))
+            
+            # Action buttons at bottom
+            actions_frame = ctk.CTkFrame(details_scroll, fg_color="transparent")
+            actions_frame.pack(fill="x", pady=(20, 10))
+            
+            if is_running:
+                stop_btn = ctk.CTkButton(
+                    actions_frame,
+                    text="⏹️ Stop Browser",
+                    fg_color="#dc3545",
+                    hover_color="#c82333",
+                    command=lambda: self.stop_profile(self.selected_profile)
+                )
+                stop_btn.pack(fill="x", pady=5)
+            else:
+                start_btn = ctk.CTkButton(
+                    actions_frame,
+                    text="▶ Start Browser",
+                    fg_color="#28a745",
+                    hover_color="#218838",
+                    command=lambda: self.start_profile(self.selected_profile)
+                )
+                start_btn.pack(fill="x", pady=5)
+            
+            edit_btn = ctk.CTkButton(
                 actions_frame,
-                text="⏹️ Stop Browser",
-                fg_color="#dc3545",
-                hover_color="#c82333",
-                command=lambda: self.stop_profile(self.selected_profile)
+                text="✏️ Edit Profile",
+                command=lambda: self.edit_profile_dialog(self.selected_profile)
             )
-            stop_btn.pack(fill="x", pady=5)
-        else:
-            start_btn = ctk.CTkButton(
+            edit_btn.pack(fill="x", pady=5)
+            
+            folder_btn = ctk.CTkButton(
                 actions_frame,
-                text="▶ Start Browser",
-                fg_color="#28a745",
-                hover_color="#218838",
-                command=lambda: self.start_profile(self.selected_profile)
+                text="📁 Open Folder",
+                command=lambda: self._open_profile_folder(self.selected_profile)
             )
-            start_btn.pack(fill="x", pady=5)
-        
-        edit_btn = ctk.CTkButton(
-            actions_frame,
-            text="✏️ Edit Profile",
-            command=lambda: self.edit_profile_dialog(self.selected_profile)
-        )
-        edit_btn.pack(fill="x", pady=5)
-        
-        folder_btn = ctk.CTkButton(
-            actions_frame,
-            text="📁 Open Folder",
-            command=lambda: self._open_profile_folder(self.selected_profile)
-        )
-        folder_btn.pack(fill="x", pady=5)
+            folder_btn.pack(fill="x", pady=5)
+        except Exception:
+            # Details may not be creatable if UI elements were destroyed
+            pass
     
     def _close_right_details(self):
         """Close the right details panel"""
@@ -503,10 +579,21 @@ class ProfileManagerGUI(ctk.CTk):
     
     def _save_notes_live(self, widget):
         """Save notes inline as the user types"""
+        # Check if UI is still valid
+        if not self._is_ui_valid():
+            return
+            
         if not self.selected_profile:
             return
-        text = widget.get("1.0", "end-1c")
-        self.profile_manager.update_profile(self.selected_profile, notes=text)
+        try:
+            text = widget.get("1.0", "end-1c")
+            self.profile_manager.update_profile(self.selected_profile, notes=text)
+        except ProfileError as e:
+            import tkinter.messagebox as mb
+            mb.showerror("Error", f"Failed to save notes: {str(e)}")
+        except Exception as e:
+            import tkinter.messagebox as mb
+            mb.showerror("Error", f"Unexpected error saving notes: {str(e)}")
     
     def _on_profile_row_click(self, event, profile_name: str):
         if isinstance(event.widget, ctk.CTkButton):
@@ -590,84 +677,108 @@ class ProfileManagerGUI(ctk.CTk):
     
     def start_profile(self, profile_name: str):
         """Start a browser profile"""
+        # Check if UI is still valid
+        if not self._is_ui_valid():
+            return
+            
         import tkinter.messagebox as mb
         
-        if BrowserLauncher.is_running(profile_name):
-            mb.showinfo("Info", f"Profile '{profile_name}' is already running.")
-            return
-        
         try:
-            BrowserLauncher.launch_from_profile_manager(
-                self.profile_manager,
-                profile_name,
-                headless=False,
-                restore_session=True
-            )
-            # Refresh once the process is registered (limited retries, no constant polling)
-            self.after(400, lambda n=profile_name: self._post_launch_refresh(n, retries=4))
-            self._start_process_monitor(profile_name)
+            profile = self.profile_manager.get_profile(profile_name)
+            if not profile:
+                mb.showerror("Error", f"Profile '{profile_name}' not found.")
+                return
+            
+            state = profile.get_instance_state()
+            if state['is_running']:
+                mb.showinfo("Info", f"Profile '{profile_name}' is already running.")
+                return
+            
+            try:
+                profile.start_instance(
+                    self.profile_manager,
+                    headless=False,
+                    restore_session=True
+                )
+                # Refresh once the process is registered (limited retries, no constant polling)
+                try:
+                    self.after(400, lambda n=profile_name: self._post_launch_refresh(n, retries=4))
+                except Exception:
+                    # Window may have been destroyed
+                    pass
+                self.process_monitor_service.start_monitor(
+                    profile_name, 
+                    self._refresh_profile_list, 
+                    self._show_right_details, 
+                    self.selected_profile
+                )
+            except Exception as e:
+                mb.showerror("Error", str(e))
+        except ProfileNotFoundError:
+            mb.showerror("Error", f"Profile '{profile_name}' not found.")
+        except ProfileError as e:
+            mb.showerror("Error", f"Failed to start profile: {str(e)}")
         except Exception as e:
-            mb.showerror("Error", str(e))
+            mb.showerror("Error", f"Unexpected error: {str(e)}")
     
     def _post_launch_refresh(self, profile_name: str, retries: int = 4):
         """Refresh list and details after launch with limited retries"""
-        if BrowserLauncher.is_running(profile_name):
-            self._refresh_profile_list()
-            if self.selected_profile == profile_name:
-                self._show_right_details()
-        elif retries > 0:
-            self.after(400, lambda n=profile_name, r=retries-1: self._post_launch_refresh(n, r))
-    
-    def _start_process_monitor(self, profile_name: str):
-        """Start a background watcher thread to update UI when the process stops"""
-        if profile_name in getattr(self, '_process_monitors', set()):
+        # Check if UI is still valid
+        if not self._is_ui_valid():
             return
-        self._process_monitors.add(profile_name)
-        def watch():
-            import time
-            import psutil
-            # Try to get the registered pid first
-            pid = None
-            for _ in range(15):  # up to ~3s
-                active = BrowserLauncher.get_active_processes().get(profile_name)
-                if active:
-                    pid = active.pid
-                    break
-                time.sleep(0.2)
             
-            if pid:
-                # Monitor the specific PID
-                while psutil.pid_exists(pid):
-                    time.sleep(1.0)
-            else:
-                # Fallback: monitor using is_running
-                while BrowserLauncher.is_running(profile_name):
-                    time.sleep(1.0)
-            
-            def update():
-                self._process_monitors.discard(profile_name)
+        if BrowserLauncher.is_running(profile_name):
+            try:
                 self._refresh_profile_list()
                 if self.selected_profile == profile_name:
                     self._show_right_details()
-            self.after(0, update)
-        threading.Thread(target=watch, daemon=True).start()
+            except Exception:
+                # UI may have been destroyed
+                pass
+        elif retries > 0:
+            try:
+                self.after(400, lambda n=profile_name, r=retries-1: self._post_launch_refresh(n, r))
+            except Exception:
+                # Window may have been destroyed
+                pass
     
     def stop_profile(self, profile_name: str):
         """Stop a browser profile"""
+        # Check if UI is still valid
+        if not self._is_ui_valid():
+            return
+            
         import tkinter.messagebox as mb
         
-        if not BrowserLauncher.is_running(profile_name):
-            mb.showinfo("Info", f"Profile '{profile_name}' is not running.")
-            return
-        
-        if mb.askyesno("Confirm", f"Stop browser for profile '{profile_name}'?"):
-            success = BrowserLauncher.kill_process(profile_name)
-            if success:
-                self._refresh_profile_list()
-                if self.selected_profile == profile_name:
-                    self._show_right_details()
-            else:
-                mb.showerror("Error", "Failed to stop browser")
+        try:
+            profile = self.profile_manager.get_profile(profile_name)
+            if not profile:
+                mb.showerror("Error", f"Profile '{profile_name}' not found.")
+                return
+            
+            state = profile.get_instance_state()
+            if not state['is_running']:
+                mb.showinfo("Info", f"Profile '{profile_name}' is not running.")
+                return
+            
+            if mb.askyesno("Confirm", f"Stop browser for profile '{profile_name}'?"):
+                success = profile.stop_instance()
+                if success:
+                    try:
+                        self._refresh_profile_list()
+                        if self.selected_profile == profile_name:
+                            self._show_right_details()
+                    except Exception:
+                        # UI may have been destroyed
+                        pass
+                else:
+                    mb.showerror("Error", "Failed to stop browser")
+        except ProfileNotFoundError:
+            mb.showerror("Error", f"Profile '{profile_name}' not found.")
+        except ProfileError as e:
+            mb.showerror("Error", f"Failed to stop profile: {str(e)}")
+        except Exception as e:
+            mb.showerror("Error", f"Unexpected error: {str(e)}")
     
     def create_profile_dialog(self):
         """Open create profile dialog"""
@@ -675,9 +786,17 @@ class ProfileManagerGUI(ctk.CTk):
     
     def _on_profile_created(self, result):
         """Handle profile creation"""
+        # Check if UI is still valid
+        if not self._is_ui_valid():
+            return
+            
         # Profile is already created by dialog; just refresh and select it
-        self._refresh_profile_list()
-        self.select_profile(result['name'])
+        try:
+            self._refresh_profile_list()
+            self.select_profile(result['name'])
+        except Exception as e:
+            import tkinter.messagebox as mb
+            mb.showerror("Error", f"Failed to refresh profile list: {str(e)}")
     
     def edit_profile_dialog(self, profile_name: str = None):
         """Open edit profile dialog"""
@@ -687,27 +806,53 @@ class ProfileManagerGUI(ctk.CTk):
         if not profile_name:
             return
         
-        profile = self.profile_manager.get_profile(profile_name)
-        if not profile:
-            return
-        
-        EditProfileDialog(self, profile, self._on_profile_updated)
+        try:
+            profile = self.profile_manager.get_profile(profile_name)
+            if not profile:
+                import tkinter.messagebox as mb
+                mb.showerror("Error", f"Profile '{profile_name}' not found.")
+                return
+            
+            EditProfileDialog(self, profile, self._on_profile_updated)
+        except ProfileNotFoundError:
+            import tkinter.messagebox as mb
+            mb.showerror("Error", f"Profile '{profile_name}' not found.")
+        except ProfileError as e:
+            import tkinter.messagebox as mb
+            mb.showerror("Error", f"Failed to load profile: {str(e)}")
+        except Exception as e:
+            import tkinter.messagebox as mb
+            mb.showerror("Error", f"Unexpected error: {str(e)}")
     
     def _on_profile_updated(self, fingerprint, proxy, notes):
         """Handle profile update"""
+        # Check if UI is still valid
+        if not self._is_ui_valid():
+            return
+            
         if not self.selected_profile:
             return
         
-        success = self.profile_manager.update_profile(
-            self.selected_profile,
-            fingerprint=fingerprint,
-            proxy=proxy,
-            notes=notes
-        )
-        
-        if success:
-            self._refresh_profile_list()
-            self._show_right_details()
+        try:
+            success = self.profile_manager.update_profile(
+                self.selected_profile,
+                fingerprint=fingerprint,
+                proxy=proxy,
+                notes=notes
+            )
+            
+            if success:
+                self._refresh_profile_list()
+                self._show_right_details()
+        except ProfileNotFoundError:
+            import tkinter.messagebox as mb
+            mb.showerror("Error", f"Profile '{self.selected_profile}' not found.")
+        except ProfileError as e:
+            import tkinter.messagebox as mb
+            mb.showerror("Error", f"Failed to update profile: {str(e)}")
+        except Exception as e:
+            import tkinter.messagebox as mb
+            mb.showerror("Error", f"Unexpected error: {str(e)}")
     
     def _edit_profile(self, profile_name: str):
         """Edit profile from context menu"""
@@ -716,68 +861,104 @@ class ProfileManagerGUI(ctk.CTk):
     
     def _duplicate_profile(self, profile_name: str):
         """Duplicate profile from context menu"""
-        dialog = ctk.CTkInputDialog(
-            text=f"Duplicate '{profile_name}' as:",
-            title="Duplicate Profile"
-        )
-        new_name = dialog.get_input()
+        import tkinter.messagebox as mb
         
-        if new_name:
-            success = self.profile_manager.duplicate_profile(profile_name, new_name)
-            if success:
-                self._refresh_profile_list()
-                self.select_profile(new_name)
+        try:
+            dialog = ctk.CTkInputDialog(
+                text=f"Duplicate '{profile_name}' as:",
+                title="Duplicate Profile"
+            )
+            new_name = dialog.get_input()
+            
+            if new_name:
+                success = self.profile_manager.duplicate_profile(profile_name, new_name)
+                if success:
+                    self._refresh_profile_list()
+                    self.select_profile(new_name)
+        except ProfileNotFoundError:
+            mb.showerror("Error", f"Profile '{profile_name}' not found.")
+        except ProfileAlreadyExistsError:
+            mb.showerror("Error", f"Profile '{new_name}' already exists.")
+        except ProfileError as e:
+            mb.showerror("Error", f"Failed to duplicate profile: {str(e)}")
+        except Exception as e:
+            mb.showerror("Error", f"Unexpected error: {str(e)}")
     
     def _rename_profile(self, profile_name: str):
         """Rename profile from context menu"""
-        dialog = ctk.CTkInputDialog(
-            text=f"Rename '{profile_name}' to:",
-            title="Rename Profile"
-        )
-        new_name = dialog.get_input()
+        import tkinter.messagebox as mb
         
-        if new_name:
-            success = self.profile_manager.rename_profile(profile_name, new_name)
-            if success:
-                self.selected_profile = new_name
-                self._refresh_profile_list()
-                self._show_right_details()
+        try:
+            dialog = ctk.CTkInputDialog(
+                text=f"Rename '{profile_name}' to:",
+                title="Rename Profile"
+            )
+            new_name = dialog.get_input()
+            
+            if new_name:
+                success = self.profile_manager.rename_profile(profile_name, new_name)
+                if success:
+                    self.selected_profile = new_name
+                    self._refresh_profile_list()
+                    self._show_right_details()
+        except ProfileNotFoundError:
+            mb.showerror("Error", f"Profile '{profile_name}' not found.")
+        except ProfileAlreadyExistsError:
+            mb.showerror("Error", f"Profile '{new_name}' already exists.")
+        except ProfileError as e:
+            mb.showerror("Error", f"Failed to rename profile: {str(e)}")
+        except Exception as e:
+            mb.showerror("Error", f"Unexpected error: {str(e)}")
     
     def _open_profile_folder(self, profile_name: str):
         """Open profile folder from context menu"""
-        pdir = self.profile_manager.profile_dir(profile_name)
-        if not pdir.exists():
-            import tkinter.messagebox as mb
-            mb.showwarning("Warning", "Profile folder not found")
-            return
+        import tkinter.messagebox as mb
         
         try:
-            if sys.platform.startswith("win"):
-                os.startfile(str(pdir))
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", str(pdir)])
-            else:
-                subprocess.Popen(["xdg-open", str(pdir)])
+            pdir = self.profile_manager.profile_dir(profile_name)
+            if not pdir.exists():
+                mb.showwarning("Warning", "Profile folder not found")
+                return
+            
+            try:
+                if sys.platform.startswith("win"):
+                    os.startfile(str(pdir))
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", str(pdir)])
+                else:
+                    subprocess.Popen(["xdg-open", str(pdir)])
+            except Exception as e:
+                mb.showerror("Error", f"Failed to open folder: {e}")
+        except ProfileNotFoundError:
+            mb.showerror("Error", f"Profile '{profile_name}' not found.")
+        except ProfileError as e:
+            mb.showerror("Error", f"Failed to locate profile: {str(e)}")
         except Exception as e:
-            import tkinter.messagebox as mb
-            mb.showerror("Error", f"Failed to open folder: {e}")
+            mb.showerror("Error", f"Unexpected error: {str(e)}")
     
     def _delete_profile(self, profile_name: str):
         """Delete profile from context menu"""
         import tkinter.messagebox as mb
         
-        if not mb.askyesno("Confirm Delete",
-                          f"Delete profile '{profile_name}' and all its data?\n\nThis cannot be undone."):
-            return
-        
-        success = self.profile_manager.delete_profile(profile_name)
-        if success:
-            if self.selected_profile == profile_name:
-                self.selected_profile = None
-                self.right_container.grid_remove()
-                # Expand main content when nothing is selected
-                self.main_container.grid_configure(columnspan=2)
-            self._refresh_profile_list()
+        try:
+            if not mb.askyesno("Confirm Delete",
+                              f"Delete profile '{profile_name}' and all its data?\n\nThis cannot be undone."):
+                return
+            
+            success = self.profile_manager.delete_profile(profile_name)
+            if success:
+                if self.selected_profile == profile_name:
+                    self.selected_profile = None
+                    self.right_container.grid_remove()
+                    # Expand main content when nothing is selected
+                    self.main_container.grid_configure(columnspan=2)
+                self._refresh_profile_list()
+        except ProfileNotFoundError:
+            mb.showerror("Error", f"Profile '{profile_name}' not found.")
+        except ProfileError as e:
+            mb.showerror("Error", f"Failed to delete profile: {str(e)}")
+        except Exception as e:
+            mb.showerror("Error", f"Unexpected error: {str(e)}")
     
     def open_process_monitor(self):
         """Open process monitor window"""

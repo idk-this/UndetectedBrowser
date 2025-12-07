@@ -114,6 +114,21 @@ class CreateProfileDialog(ctk.CTkToplevel):
         ctk.CTkRadioButton(os_frame, text="macOS", variable=self.os_var, value="macos").pack(side="left", padx=5)
         ctk.CTkRadioButton(os_frame, text="Linux", variable=self.os_var, value="linux").pack(side="left", padx=5)
         
+        # Browser Engine
+        ctk.CTkLabel(
+            tab,
+            text="Browser Engine:",
+            font=ctk.CTkFont(weight="bold")
+        ).pack(anchor="w", pady=(10, 5))
+        
+        self.engine_var = ctk.StringVar(value="chromedriver")
+        
+        engine_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        engine_frame.pack(fill="x", pady=(0, 15))
+        
+        ctk.CTkRadioButton(engine_frame, text="ChromeDriver", variable=self.engine_var, value="chromedriver").pack(side="left", padx=5)
+        # Future engines can be added here when implemented
+        
         # User Agent
         ctk.CTkLabel(
             tab,
@@ -437,7 +452,7 @@ class CreateProfileDialog(ctk.CTkToplevel):
             'fingerprint': fingerprint,
             'proxy': proxy,
             'notes': notes,
-            'engine': "chromedriver"
+            'engine': self.engine_var.get()
         }
         
         # Call the modified create_profile function

@@ -13,8 +13,9 @@ from datetime import datetime
 
 from src.utils.fingerprint_generator import BrowserFingerprint, FingerprintGenerator
 from src.utils.proxy_manager import ProxyConfig
-from src.config import DEFAULT_BROWSER_ARGS, BROWSER_ENGINE
+from src.config import DEFAULT_BROWSER_ARGS
 from src.core.engines.chromedriver_engine import ChromeDriverEngine
+from src.config_manager import config_manager
 
 class BrowserProcess:
     """Represents a running browser process"""
@@ -257,7 +258,7 @@ class BrowserLauncher:
 
         def _run():
             try:
-                engine_local = engine or BROWSER_ENGINE
+                engine_local = engine or config_manager.get_str("browser_engine", "chromedriver")
 
                 def register(pid: int):
                     BrowserLauncher._active_processes[profile_name] = BrowserProcess(
@@ -339,5 +340,5 @@ class BrowserLauncher:
             headless=headless,
             extra_args=extra_args,
             restore_session=restore_session,
-            engine=engine or BROWSER_ENGINE
+            engine=engine or config_manager.get_str("browser_engine", "chromedriver")
         )

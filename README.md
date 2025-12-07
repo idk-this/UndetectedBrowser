@@ -1,6 +1,6 @@
 # UndetectedBrowser
 
-A stealth browser automation tool with advanced profile management and fingerprint spoofing capabilities. Built with Python and PyQt5, UndetectedBrowser provides a user-friendly GUI for managing multiple browser profiles with persistent sessions and undetectable browser fingerprints.
+A stealth browser automation tool with advanced profile management and fingerprint spoofing capabilities. Built with Python and CustomTkinter, UndetectedBrowser provides a user-friendly GUI for managing multiple browser profiles with persistent sessions and undetectable browser fingerprints.
 
 ## Features
 
@@ -8,9 +8,10 @@ A stealth browser automation tool with advanced profile management and fingerpri
 - 👤 **Multi-Profile Management** - Create and manage multiple isolated browser profiles
 - 🔄 **Session Persistence** - Automatically saves and restores tabs across browser sessions
 - 🔌 **Proxy Support** - Configure proxies for each profile individually
-- 🎨 **Modern GUI** - Clean and intuitive interface
+- 🎨 **Modern GUI** - Clean and intuitive interface with dark theme
 - 🔒 **Isolated Environments** - Each profile runs in a completely isolated environment
 - 💾 **Persistent Storage** - Browser data, cookies, and extensions persist across sessions
+- 🖥️ **Process Monitoring** - Real-time monitoring of running browser instances
 
 ## Architecture
 
@@ -29,11 +30,13 @@ UndetectedBrowser/
 │   │   ├── main_window.py
 │   │   ├── create_profile_dialog.py
 │   │   ├── edit_profile_dialog.py
-│   │   └── process_monitor.py
+│   │   ├── process_monitor.py
+│   │   └── process_monitor_service.py
 │   ├── utils/             # Utility modules
 │   │   ├── fingerprint_generator.py
 │   │   └── proxy_manager.py
 │   ├── config.py
+│   ├── config_manager.py
 │   └── __init__.py
 ├── profiles/              # Profile data (not tracked in git)
 ├── main.py               # Application entry point
@@ -46,7 +49,21 @@ UndetectedBrowser/
 - **Profile Manager** - Handles CRUD operations for browser profiles
 - **Fingerprint Generator** - Creates randomized browser fingerprints
 - **Process Monitor** - Tracks and manages running browser instances
+- **Process Monitor Service** - Background service for monitoring browser processes
 - **Engine System** - Pluggable architecture for different browser automation libraries
+- **Configuration Manager** - Centralized configuration management system
+
+## Recent Improvements
+
+### Enhanced Stability
+- **UI Race Condition Fixes** - Comprehensive error handling to prevent Tkinter callback errors
+- **Advanced Widget Management** - Safe destruction of UI elements with proper event cleanup
+- **Robust Session Handling** - Graceful handling of browser session termination
+
+### Improved Architecture
+- **Process Monitor Service** - Dedicated service for background process monitoring
+- **Configuration Manager** - Centralized configuration system for better maintainability
+- **Enhanced Error Handling** - Systematic protection against various error conditions
 
 ## Installation
 
@@ -184,7 +201,7 @@ This tool is intended for legitimate browser automation tasks, testing, and priv
 ## Acknowledgments
 
 - Built with [undetected-chromedriver](https://github.com/ultrafunkamsterdam/undetected-chromedriver)
-- Modern PyQt5 user interface
+- Modern CustomTkinter user interface
 - PyQt5 for the graphical interface
 
 ## Roadmap

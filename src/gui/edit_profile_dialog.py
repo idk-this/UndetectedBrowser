@@ -55,11 +55,13 @@ class EditProfileDialog(ctk.CTkToplevel):
         # Add tabs
         self.tabview.add("Fingerprint")
         self.tabview.add("Proxy")
+        self.tabview.add("Engine")
         self.tabview.add("Notes")
         
         # Configure tabs
         self._create_fingerprint_tab()
         self._create_proxy_tab()
+        self._create_engine_tab()
         self._create_notes_tab()
         
         # Buttons
@@ -269,6 +271,47 @@ class EditProfileDialog(ctk.CTkToplevel):
         self.test_status = ctk.CTkLabel(tab, text="")
         self.test_status.pack(anchor="w", pady=(10, 0))
     
+    def _create_engine_tab(self):
+        """Create Engine tab"""
+        tab = self.tabview.tab("Engine")
+        
+        # Current engine display
+        ctk.CTkLabel(
+            tab,
+            text="Current Engine:",
+            font=ctk.CTkFont(weight="bold")
+        ).pack(anchor="w", pady=(10, 5))
+        
+        current_engine = getattr(self.profile, 'engine', 'chromedriver')
+        ctk.CTkLabel(
+            tab,
+            text=current_engine,
+            font=ctk.CTkFont(size=14)
+        ).pack(anchor="w", padx=10, pady=(0, 15))
+        
+        # Engine selection
+        ctk.CTkLabel(
+            tab,
+            text="Select Engine:",
+            font=ctk.CTkFont(weight="bold")
+        ).pack(anchor="w", pady=(10, 5))
+        
+        self.engine_var = ctk.StringVar(value=current_engine)
+        
+        engine_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        engine_frame.pack(fill="x", pady=(0, 15))
+        
+        ctk.CTkRadioButton(engine_frame, text="ChromeDriver", variable=self.engine_var, value="chromedriver").pack(side="left", padx=5)
+        # Future engines can be added here when implemented
+        
+        # Warning
+        ctk.CTkLabel(
+            tab,
+            text="Note: Changing engine may affect profile compatibility",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        ).pack(anchor="w", pady=(20, 0))
+    
     def _create_notes_tab(self):
         """Create Notes tab"""
         tab = self.tabview.tab("Notes")
@@ -430,6 +473,21 @@ class EditProfileDialog(ctk.CTkToplevel):
         # Get notes
         notes = self.notes_text.get("1.0", "end-1c").strip()
         
+        # Get engine
+        engine = self.engine_var.get()
+        
         # Save
-        self.on_save(fingerprint, proxy, notes)
-        self.destroy()
+        # We need to modify profile_manager to accept engine parameter
+        success = self.master.profile_manager.update_profile(
+            self.profile.name,
+            fingerprint=fingerprint,
+            proxy=proxy,
+            notes=notes,
+            engine=engine
+        )
+        
+        if success:
+            self.on_save(fingerprint, proxy, notes)
+            self.destroy()
+        else:
+            self.test_status.configure(text="Failed to save profile", text_color="red")
